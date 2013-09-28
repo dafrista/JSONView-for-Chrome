@@ -1,4 +1,5 @@
 var port = chrome.extension.connect(), collapsers, options, jsonObject;
+var ctrl = false;
 
 function displayError(error, loc, offset) {
 	var link = document.createElement("link"), pre = document.body.firstChild.firstChild, text = pre.textContent.substring(offset), start = 0, ranges = [], idx = 0, end, range = document
@@ -40,7 +41,7 @@ function displayError(error, loc, offset) {
 }
 
 function displayUI(theme, html) {
-	var statusElement, toolboxElement, expandElement, reduceElement, viewSourceElement, optionsElement, content = "";
+	var statusElement, toolboxElement, expandElement, reduceElement, viewSourceElement, clipboardElement, optionsElement, content = "";
 	content += '<link rel="stylesheet" type="text/css" href="' + chrome.extension.getURL("jsonview-core.css") + '">';
 	content += "<style>" + theme + "</style>";
 	content += html;
@@ -64,20 +65,32 @@ function displayUI(theme, html) {
 	viewSourceElement.innerText = "View source";
 	viewSourceElement.target = "_blank";
 	viewSourceElement.href = "view-source:" + location.href;
+	clipboardElement = document.createElement("img");
+	clipboardElement.title = "copy selected";
+	clipboardElement.src = chrome.extension.getURL("clipboard16.png");
 	optionsElement = document.createElement("img");
 	optionsElement.title = "options";
 	optionsElement.src = chrome.extension.getURL("options.png");
 	toolboxElement.appendChild(expandElement);
 	toolboxElement.appendChild(reduceElement);
 	toolboxElement.appendChild(viewSourceElement);
+	toolboxElement.appendChild(clipboardElement);
 	toolboxElement.appendChild(optionsElement);
 	document.body.appendChild(toolboxElement);
 	document.body.addEventListener('click', ontoggle, false);
 	document.body.addEventListener('mouseover', onmouseMove, false);
 	document.body.addEventListener('click', onmouseClick, false);
 	document.body.addEventListener('contextmenu', onContextMenu, false);
+	document.body.onkeydown = function(e) { if (e.keyCode === 17) ctrl = true };
+	document.body.onkeyup = function(e) { if (e.keyCode === 17) ctrl = false };
 	expandElement.addEventListener('click', onexpand, false);
 	reduceElement.addEventListener('click', onreduce, false);
+	clipboardElement.addEventListener('click', function() {
+		port.postMessage({
+			copySelected : true,
+			selected: getSelected()
+		});
+	}, false);
 	optionsElement.addEventListener("click", function() {
 		window.open(chrome.extension.getURL("options.html"));
 	}, false);
@@ -175,6 +188,43 @@ function onreduce() {
 	});
 }
 
+function getSelected() {
+	var selecteds = document.getElementsByClassName('selected');
+	var txt = "";
+	Array.prototype.forEach.call(selecteds, function(selected) {
+		// console.log(selected);
+		var path = getPath(getParentLI(selected));
+		var value = getValue(path);
+		txt = txt + value + "\n";
+	});
+	// console.log(txt);
+	return txt;
+}
+
+function getPath(element) {
+	var str = "";
+	do {
+		if (element.parentNode.classList.contains("array")) {
+			var index = [].indexOf.call(element.parentNode.children, element);
+			str = "[" + index + "]" + str;
+		}
+		if (element.parentNode.classList.contains("obj")) {
+			str = "." + element.firstChild.firstChild.innerText + str;
+		}
+		element = element.parentNode.parentNode.parentNode;
+	} while (element.tagName == "LI");
+	if (str.charAt(0) == '.')
+		str = str.substring(1);
+	return str;
+}
+
+function getValue(path) {
+	if (Array.isArray(jsonObject))
+		return eval("(jsonObject" + path + ")");
+	else
+		return eval("(jsonObject." + path + ")");
+}
+
 function getParentLI(element) {
 	if (element.tagName != "LI")
 		while (element && element.tagName != "LI")
@@ -203,19 +253,7 @@ var onmouseMove = (function() {
 				hoveredLI.firstChild.classList.remove("hovered");
 			hoveredLI = element;
 			element.firstChild.classList.add("hovered");
-			do {
-				if (element.parentNode.classList.contains("array")) {
-					var index = [].indexOf.call(element.parentNode.children, element);
-					str = "[" + index + "]" + str;
-				}
-				if (element.parentNode.classList.contains("obj")) {
-					str = "." + element.firstChild.firstChild.innerText + str;
-				}
-				element = element.parentNode.parentNode.parentNode;
-			} while (element.tagName == "LI");
-			if (str.charAt(0) == '.')
-				str = str.substring(1);
-			statusElement.innerText = str;
+			statusElement.innerText = getPath(element);
 			return;
 		}
 		onmouseOut();
@@ -225,11 +263,55 @@ var onmouseMove = (function() {
 var selectedLI;
 
 function onmouseClick() {
-	if (selectedLI)
-		selectedLI.firstChild.classList.remove("selected");
+	if (!event.target) {
+		// console.log("undefined");
+		return;
+	}
 	selectedLI = getParentLI(event.target);
+
+	// <debug>
+	element = selectedLI;
+	// console.log(element);
+	// console.log(element.parentNode);
+	// console.log(element.parentNode.classList);
+	// </debug>
+
 	if (selectedLI) {
-		selectedLI.firstChild.classList.add("selected");
+		var stringss, nullss, target = event.target;
+		stringss = target.parentNode.getElementsByClassName('type-string');
+		nullss = target.parentNode.getElementsByClassName('type-null');
+		// console.log("Length "+stringss.length+" Ctrl "+ctrl);
+		// console.log(stringss);
+
+		// Choose to remove all if at least one selected child entry
+		var remove = false;
+		Array.prototype.forEach.call(stringss, function(selected) {
+			if (selected.parentNode.classList.contains("selected")) {
+				remove = true;
+				return;
+			}
+		});
+		Array.prototype.forEach.call(nullss, function(selected) {
+			if (selected.parentNode.classList.contains("selected")) {
+				remove = true;
+				return;
+			}
+		});
+		// console.log("remove="+remove);
+
+		// Actually remove or add
+		Array.prototype.forEach.call(stringss, function(selected) {
+			if (remove)
+				selected.parentNode.classList.remove("selected");
+			else
+				selected.parentNode.classList.add("selected");
+		});
+		Array.prototype.forEach.call(nullss, function(selected) {
+			if (remove)
+				selected.parentNode.classList.remove("selected");
+			else
+				selected.parentNode.classList.add("selected");
+		});
 	}
 }
 
@@ -238,14 +320,12 @@ function onContextMenu() {
 	currentLI = getParentLI(event.target);
 	statusElement = document.querySelector(".status");
 	if (currentLI) {
-		if (Array.isArray(jsonObject))
-			value = eval("(jsonObject" + statusElement.innerText + ")");
-		else
-			value = eval("(jsonObject." + statusElement.innerText + ")");
+		value = getValue(statusElement.innerText);
 		port.postMessage({
 			copyPropertyPath : true,
 			path : statusElement.innerText,
-			value : typeof value == "object" ? JSON.stringify(value) : value
+			value : typeof value == "object" ? JSON.stringify(value) : value,
+			selected : getSelected()
 		});
 	}
 }

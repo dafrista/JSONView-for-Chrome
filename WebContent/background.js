@@ -1,4 +1,4 @@
-var path, value, copyPathMenuEntryId, copyValueMenuEntryId;
+var path, value, selected, copyPathMenuEntryId, copyValueMenuEntryId;
 
 function getDefaultTheme(callback) {
 	var xhr = new XMLHttpRequest();
@@ -39,6 +39,13 @@ function refreshMenuEntry() {
 			contexts : [ "page", "link" ],
 			onclick : function(info, tab) {
 				copy(value);				
+			}
+		});
+		copySelectedValuesMenuEntryId = chrome.contextMenus.create({
+			title : "Copy selected values",
+			contexts : [ "page", "link" ],
+			onclick : function(info, tab) {
+				copy(selected);
 			}
 		});
 	}
@@ -91,6 +98,10 @@ function init() {
 			if (msg.copyPropertyPath) {
 				path = msg.path;
 				value = msg.value;
+				selected = msg.selected;
+			}
+			if (msg.copySelected) {
+				copy(msg.selected);
 			}
 			if (msg.jsonToHTML) {
 				workerFormatter = new Worker("workerFormatter.js");
