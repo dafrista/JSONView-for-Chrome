@@ -263,6 +263,51 @@ var onmouseMove = (function() {
 var selectedLI;
 
 function onmouseClick() {
+	if (ctrl)
+		onmouseClickCtrl();
+	else
+		onmouseClickOnly();
+}
+
+function onmouseClickCtrl() {
+	// console.log("onmouseClickCtrl");
+	if (!event.target) {
+		return;
+	}
+	selectedLI = getParentLI(event.target);
+
+	element = selectedLI;
+
+	if (selectedLI) {
+		var property = element.getElementsByClassName('property')[0].innerText;
+		// console.log("property="+property);
+		var propertyss = document.getElementsByClassName('property');
+		// console.log(propertyss);
+
+		// Choose to remove all if at least one selected child entry
+		var remove = false;
+		Array.prototype.forEach.call(propertyss, function(selected) {
+			if (selected.innerText === property) {
+				if (selected.parentNode.classList.contains("selected")) {
+					remove = true;
+					return;
+				}
+			}
+		});
+
+		// Actually remove or add
+		Array.prototype.forEach.call(propertyss, function(selected) {
+			if (selected.innerText === property) {
+				if (remove)
+					selected.parentNode.classList.remove("selected");
+				else
+					selected.parentNode.classList.add("selected");
+			}
+		});
+	}
+}
+
+function onmouseClickOnly() {
 	if (!event.target) {
 		// console.log("undefined");
 		return;
